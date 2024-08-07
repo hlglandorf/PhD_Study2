@@ -1,0 +1,3043 @@
+---
+title: "Study2 RI_CLPM Analysis"
+author: "[anonymised for review]"
+date: " "
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data Analysis on the potential health consequences of burnout in athletes
+This code file analyses the data from steps 1 and 2 with a random-intercept cross-lagged panel model. 
+
+The analysis is separated into: 
+- Demographic information on participants
+- Descriptive statistics
+- Data screening
+- Correlations
+- RI-CLPMs (standard, then constrained)
+- Model comparisons
+
+# Import relevant libraries
+```{r libraries, warning=FALSE}
+set.seed(17)
+library(tidyverse)
+library(lavaan)
+library(ChiBarSq.DiffTest)
+```
+
+# Load in dataset
+```{r load data}
+dat1 <- read.csv("s2data/BOH_data.csv")
+```
+
+# Determine demographic information
+```{r demographics}
+##counting number of each biological sex with 1 being female and 2 being male
+dat1 %>%
+  group_by(bio_sex) %>%
+  summarise(n())
+##counting number of each sport type with 1 being individual and 2 being team sport
+dat1 %>%
+  group_by(sport_type) %>%
+  summarise(n())
+##counting number of individuals with recent injuries with 1 being No injuries and 2 being recently injured
+dat1 %>%
+  group_by(injury) %>%
+  summarise(n())
+##counting number of individuals at different times in their season: 1 being pre-season, 2 beginning of season, 3 mid-season, 4 end of season, 5 post-season
+#wave1
+dat1 %>%
+  group_by(t1season) %>%
+  summarise(n())
+#wave2
+dat1 %>%
+  group_by(t2season) %>%
+  summarise(n())
+#wave3
+dat1 %>%
+  group_by(t3season) %>%
+  summarise(n())
+##counting number of people taking medication
+#wave1
+dat1 %>%
+  filter(!is.na(t1medication)) %>%
+  group_by(t1medication) %>%
+  summarise(n())
+#wave2
+dat1 %>%
+  filter(!is.na(t2medication)) %>%
+  group_by(t2medication) %>%
+  summarise(n())
+#wave3
+dat1 %>%
+  filter(!is.na(t3medication)) %>%
+  group_by(t3medication) %>%
+  summarise(n())
+##numerical demographics (mean, sd, min, max) on age, competition years
+demographics <- dat1 %>%
+  summarise(mean(age, na.rm = T), sd(age, na.rm=T), min(age, na.rm=T), max(age, na.rm=T), #age
+            mean(comp_years, na.rm = T), sd(comp_years, na.rm=T), min(comp_years, na.rm=T), max(comp_years, na.rm = T), #competition years
+            mean(t1trainingload, na.rm = T), sd(t1trainingload, na.rm=T), min(t1trainingload, na.rm = T), max(t1trainingload, na.rm = T), #wave1 training load
+            mean(t2trainingload, na.rm = T), sd(t2trainingload, na.rm=T), min(t2trainingload, na.rm = T), max(t2trainingload, na.rm = T), #wave2 training load
+            mean(t3trainingload, na.rm = T), sd(t3trainingload, na.rm=T), min(t3trainingload, na.rm = T), max(t3trainingload, na.rm = T)) #wave 3 training load
+```
+
+# Calculate descriptive statistics
+```{r descriptive statistics}
+##calculating 20% trimmed mean, sd, min, max for each variable (total burnout and symptoms, depressive symptoms, sleep quality (general score [PSQIg] and general reduced score for reliability [PSQIgr]), physical symptoms, respiratory symptoms (WURSSg as general score, WURSSc as change score), life quality) for each wave
+descriptives <- dat1 %>%
+  summarise(mean(t1BURN, na.rm=T, trim = 0.2), sd(t1BURN, na.rm=T), min(t1BURN, na.rm = T), max(t1BURN, na.rm = T),
+            mean(t1EXH, na.rm=T, trim = 0.2), sd(t1EXH, na.rm=T), min(t1EXH, na.rm = T), max(t1EXH, na.rm = T),
+            mean(t1DEV, na.rm=T, trim = 0.2), sd(t1DEV, na.rm=T), min(t1DEV, na.rm = T), max(t1DEV, na.rm = T),
+            mean(t1RSA, na.rm=T, trim = 0.2), sd(t1RSA, na.rm=T), min(t1RSA, na.rm = T), max(t1RSA, na.rm = T),
+            mean(t1DS, na.rm=T, trim = 0.2), sd(t1DS, na.rm=T), min(t1DS, na.rm = T), max(t1DS, na.rm = T),
+            mean(t1PSQIg, na.rm=T, trim = 0.2), sd(t1PSQIg, na.rm=T), min(t1PSQIg, na.rm = T), max(t1PSQIg, na.rm = T),
+            mean(t1PSQIgr, na.rm=T, trim = 0.2), sd(t1PSQIgr, na.rm=T), min(t1PSQIgr, na.rm = T), max(t1PSQIgr, na.rm = T),
+            mean(t1PS, na.rm=T, trim = 0.2), sd(t1PS, na.rm=T), min(t1PS, na.rm = T), max(t1PS, na.rm = T),
+            mean(t1WURSSg, na.rm=T, trim = 0.2), sd(t1WURSSg, na.rm=T), min(t1WURSSg, na.rm = T), max(t1WURSSg, na.rm = T),
+            mean(t1WURSSc, na.rm=T, trim = 0.2), sd(t1WURSSc, na.rm=T), min(t1WURSSc, na.rm = T), max(t1WURSSc, na.rm = T),
+            mean(t1LS, na.rm=T, trim = 0.2), sd(t1LS, na.rm=T), min(t1LS, na.rm = T), max(t1LS, na.rm = T), ##wave 1 until here
+            mean(t2BURN, na.rm=T, trim = 0.2), sd(t2BURN, na.rm=T), min(t2BURN, na.rm = T), max(t2BURN, na.rm = T),
+            mean(t2EXH, na.rm=T, trim = 0.2), sd(t2EXH, na.rm=T), min(t2EXH, na.rm = T), max(t2EXH, na.rm = T),
+            mean(t2DEV, na.rm=T, trim = 0.2), sd(t2DEV, na.rm=T), min(t2DEV, na.rm = T), max(t2DEV, na.rm = T),
+            mean(t2RSA, na.rm=T, trim = 0.2), sd(t2RSA, na.rm=T), min(t2RSA, na.rm = T), max(t2RSA, na.rm = T),
+            mean(t2DS, na.rm=T, trim = 0.2), sd(t2DS, na.rm=T), min(t2DS, na.rm = T), max(t2DS, na.rm = T),
+            mean(t2PSQIg, na.rm=T, trim = 0.2), sd(t2PSQIg, na.rm=T), min(t2PSQIg, na.rm = T), max(t2PSQIg, na.rm = T),
+            mean(t2PSQIgr, na.rm=T, trim = 0.2), sd(t2PSQIgr, na.rm=T), min(t2PSQIgr, na.rm = T), max(t2PSQIgr, na.rm = T),
+            mean(t2PS, na.rm=T, trim = 0.2), sd(t2PS, na.rm=T), min(t2PS, na.rm = T), max(t2PS, na.rm = T),
+            mean(t2WURSSg, na.rm=T, trim = 0.2), sd(t2WURSSg, na.rm=T), min(t2WURSSg, na.rm = T), max(t2WURSSg, na.rm = T),
+            mean(t2WURSSc, na.rm=T, trim = 0.2), sd(t2WURSSc, na.rm=T), min(t2WURSSc, na.rm = T), max(t2WURSSc, na.rm = T),
+            mean(t2LS, na.rm=T, trim = 0.2), sd(t2LS, na.rm=T), min(t2LS, na.rm = T), max(t2LS, na.rm = T), ##wave 2 until here
+            mean(t3BURN, na.rm=T, trim = 0.2), sd(t3BURN, na.rm=T), min(t3BURN, na.rm = T), max(t3BURN, na.rm = T),
+            mean(t3EXH, na.rm=T, trim = 0.2), sd(t3EXH, na.rm=T), min(t3EXH, na.rm = T), max(t3EXH, na.rm = T),
+            mean(t3DEV, na.rm=T, trim = 0.2), sd(t3DEV, na.rm=T), min(t3DEV, na.rm = T), max(t3DEV, na.rm = T),
+            mean(t3RSA, na.rm=T, trim = 0.2), sd(t3RSA, na.rm=T), min(t3RSA, na.rm = T), max(t3RSA, na.rm = T),
+            mean(t3DS, na.rm=T, trim = 0.2), sd(t3DS, na.rm=T), min(t3DS, na.rm = T), max(t3DS, na.rm = T),
+            mean(t3PSQIg, na.rm=T, trim = 0.2), sd(t3PSQIg, na.rm=T), min(t3PSQIg, na.rm = T), max(t3PSQIg, na.rm = T),
+            mean(t3PSQIgr, na.rm=T, trim = 0.2), sd(t3PSQIgr, na.rm=T), min(t3PSQIgr, na.rm = T), max(t3PSQIgr, na.rm = T),
+            mean(t3PS, na.rm=T, trim = 0.2), sd(t3PS, na.rm=T), min(t3PS, na.rm = T), max(t3PS, na.rm = T),
+            mean(t3WURSSg, na.rm=T, trim = 0.2), sd(t3WURSSg, na.rm=T), min(t3WURSSg, na.rm = T), max(t3WURSSg, na.rm = T),
+            mean(t3WURSSc, na.rm=T, trim = 0.2), sd(t3WURSSc, na.rm=T), min(t3WURSSc, na.rm = T), max(t3WURSSc, na.rm = T),
+            mean(t3LS, na.rm=T, trim = 0.2), sd(t3LS, na.rm=T), min(t3LS, na.rm = T), max(t3LS, na.rm = T)) ##wave 3 until here
+##calculating mads
+#wave1
+mad(dat1$t1BURN, na.rm = T)
+mad(dat1$t1EXH, na.rm = T)
+mad(dat1$t1DEV, na.rm = T)
+mad(dat1$t1RSA, na.rm = T)
+mad(dat1$t1DS, na.rm = T)
+mad(dat1$t1PSQIg, na.rm = T)
+mad(dat1$t1PSQIgr, na.rm = T)
+mad(dat1$t1PS, na.rm = T)
+mad(dat1$t1WURSSg, na.rm = T)
+mad(dat1$t1LS, na.rm = T)
+#wave2
+mad(dat1$t2BURN, na.rm = T)
+mad(dat1$t2EXH, na.rm = T)
+mad(dat1$t2DEV, na.rm = T)
+mad(dat1$t2RSA, na.rm = T)
+mad(dat1$t2DS, na.rm = T)
+mad(dat1$t2PSQIg, na.rm = T)
+mad(dat1$t2PSQIgr, na.rm = T)
+mad(dat1$t2PS, na.rm = T)
+mad(dat1$t2WURSSg, na.rm = T)
+mad(dat1$t2LS, na.rm = T)
+#wave3
+mad(dat1$t3BURN, na.rm = T)
+mad(dat1$t3EXH, na.rm = T)
+mad(dat1$t3DEV, na.rm = T)
+mad(dat1$t3RSA, na.rm = T)
+mad(dat1$t3DS, na.rm = T)
+mad(dat1$t3PSQIg, na.rm = T)
+mad(dat1$t3PSQIgr, na.rm = T)
+mad(dat1$t3PS, na.rm = T)
+mad(dat1$t3WURSSg, na.rm = T)
+mad(dat1$t3LS, na.rm = T)
+```
+
+# Assess data distribution and outliers
+```{r visualisations}
+## check distributions of variables at each wave
+##wave 1
+ggplot(dat1, aes(t1BURN))+
+  geom_density()
+ggplot(dat1, aes(t1EXH))+
+  geom_density()
+ggplot(dat1, aes(t1DEV))+
+  geom_density()
+ggplot(dat1, aes(t1RSA))+
+  geom_density()
+ggplot(dat1, aes(t1DS))+
+  geom_density()
+ggplot(dat1, aes(t1PSQIg))+
+  geom_density()
+ggplot(dat1, aes(t1PSQIgr))+
+  geom_density()
+ggplot(dat1, aes(t1PS))+
+  geom_density()
+ggplot(dat1, aes(t1WURSSg))+
+  geom_density()
+ggplot(dat1, aes(t1LS))+
+  geom_density()
+
+#wave 2
+ggplot(dat1, aes(t2BURN))+
+  geom_density()
+ggplot(dat1, aes(t2EXH))+
+  geom_density()
+ggplot(dat1, aes(t2DEV))+
+  geom_density()
+ggplot(dat1, aes(t2RSA))+
+  geom_density()
+ggplot(dat1, aes(t2DS))+
+  geom_density()
+ggplot(dat1, aes(t2PSQIg))+
+  geom_density()
+ggplot(dat1, aes(t2PSQIgr))+
+  geom_density()
+ggplot(dat1, aes(t2PS))+
+  geom_density()
+ggplot(dat1, aes(t2WURSSg))+
+  geom_density()
+ggplot(dat1, aes(t2LS))+
+  geom_density()
+
+##wave 3
+ggplot(dat1, aes(t3BURN))+
+  geom_density()
+ggplot(dat1, aes(t3EXH))+
+  geom_density()
+ggplot(dat1, aes(t3DEV))+
+  geom_density()
+ggplot(dat1, aes(t3RSA))+
+  geom_density()
+ggplot(dat1, aes(t3DS))+
+  geom_density()
+ggplot(dat1, aes(t3PSQIg))+
+  geom_density()
+ggplot(dat1, aes(t3PSQIgr))+
+  geom_density()
+ggplot(dat1, aes(t3PS))+
+  geom_density()
+ggplot(dat1, aes(t3WURSSg))+
+  geom_density()
+ggplot(dat1, aes(t3LS))+
+  geom_density()
+
+##check z-values
+dat2 <- dat1 %>% 
+  mutate(t1BURNz = scale(t1BURN), t1EXHz = scale(t1EXH), t1DEVz = scale(t1DEV), t1RSAz = scale(t1RSA),
+         t1DSz = scale(t1DS), t1PSQIgz = scale(t1PSQIg), t1PSQIgrz = scale(t1PSQIgr), t1WURSSgz = scale(t1WURSSg), t1PSz = scale(t1PS), t1LSz = scale(t1LS), 
+         t2BURNz = scale(t2BURN), t2EXHz = scale(t2EXH), t2DEVz = scale(t2DEV), t2RSAz = scale(t2RSA),
+         t2DSz = scale(t2DS), t2PSQIgz = scale(t2PSQIg), t2PSQIgrz = scale(t2PSQIgr), t2WURSSgz = scale(t2WURSSg), t2PSz = scale(t2PS), t2LSz = scale(t2LS),
+         t3BURNz = scale(t3BURN), t3EXHz = scale(t3EXH), t3DEVz = scale(t3DEV), t3RSAz = scale(t3RSA),
+         t3DSz = scale(t3DS), t3PSQIgz = scale(t3PSQIg), t3PSQIgrz = scale(t3PSQIgr), t3WURSSgz = scale(t3WURSSg), t3PSz = scale(t3PS), t3LSz = scale(t3LS))
+
+##create checkpoint
+dat3 <- dat2
+
+##cleaning out absolute z values over 3 by replacing them with NAs
+#wave1
+dat2$t1BURN <- replace(dat2$t1BURN, abs(dat2$t1BURNz) > 3, NA)
+dat2$t1EXH <- replace(dat2$t1EXH, abs(dat2$t1EXHz) > 3, NA)
+dat2$t1DEV <- replace(dat2$t1DEV, abs(dat2$t1DEVz) > 3, NA)
+dat2$t1RSA <- replace(dat2$t1RSA, abs(dat2$t1RSAz) > 3, NA)
+dat2$t1DS <- replace(dat2$t1DS, abs(dat2$t1DSz) > 3, NA)
+dat2$t1PSQIg <- replace(dat2$t1PSQIg, abs(dat2$t1PSQIgz) > 3, NA)
+dat2$t1PSQIgr <- replace(dat2$t1PSQIgr, abs(dat2$t1PSQIgrz) > 3, NA)
+dat2$t1PS <- replace(dat2$t1PS, abs(dat2$t1PSz) > 3, NA)
+dat2$t1WURSSg <- replace(dat2$t1WURSSg, abs(dat2$t1WURSSgz) > 3, NA)
+dat2$t1LS <- replace(dat2$t1LS, abs(dat2$t1LSz) > 3, NA)
+#wave2
+dat2$t2BURN <- replace(dat2$t2BURN, abs(dat2$t2BURNz) > 3, NA)
+dat2$t2EXH <- replace(dat2$t2EXH, abs(dat2$t2EXHz) > 3, NA)
+dat2$t2DEV <- replace(dat2$t2DEV, abs(dat2$t2DEVz) > 3, NA)
+dat2$t2RSA <- replace(dat2$t2RSA, abs(dat2$t2RSAz) > 3, NA)
+dat2$t2DS <- replace(dat2$t2DS, abs(dat2$t2DSz) > 3, NA)
+dat2$t2PSQIg <- replace(dat2$t2PSQIg, abs(dat2$t2PSQIgz) > 3, NA)
+dat2$t2PSQIgr <- replace(dat2$t2PSQIgr, abs(dat2$t2PSQIgrz) > 3, NA)
+dat2$t2PS <- replace(dat2$t2PS, abs(dat2$t2PSz) > 3, NA)
+dat2$t2WURSSg <- replace(dat2$t2WURSSg, abs(dat2$t2WURSSgz) > 3, NA)
+dat2$t2LS <- replace(dat2$t2LS, abs(dat2$t2LSz) > 3, NA)
+#wave3
+dat2$t3BURN <- replace(dat2$t3BURN, abs(dat2$t3BURNz) > 3, NA)
+dat2$t3EXH <- replace(dat2$t3EXH, abs(dat2$t3EXHz) > 3, NA)
+dat2$t3DEV <- replace(dat2$t3DEV, abs(dat2$t3DEVz) > 3, NA)
+dat2$t3RSA <- replace(dat2$t3RSA, abs(dat2$t3RSAz) > 3, NA)
+dat2$t3DS <- replace(dat2$t3DS, abs(dat2$t3DSz) > 3, NA)
+dat2$t3PSQIg <- replace(dat2$t3PSQIg, abs(dat2$t3PSQIgz) > 3, NA)
+dat2$t3PSQIgr <- replace(dat2$t3PSQIgr, abs(dat2$t3PSQIgrz) > 3, NA)
+dat2$t3PS <- replace(dat2$t3PS, abs(dat2$t3PSz) > 3, NA)
+dat2$t3WURSSg <- replace(dat2$t3WURSSg, abs(dat2$t3WURSSgz) > 3, NA)
+dat2$t3LS <- replace(dat2$t3LS, abs(dat2$t3LSz) > 3, NA)
+``` 
+
+# Determine correlations for full correlation table
+- dat1 has all original values, dat2 has z values and is cleaned for those, dat3 has only z-values, but is not cleaned
+- all analyses post this point are run with dat2
+```{r correlations}
+##to calculate spearman correlations switch method = "pearson" to "spearman"
+##using the replace and find option under edit at the top is the easiest way to switch out the method here 
+
+##across wave 1
+cor.test(dat2$t1BURN, dat2$t1EXH, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t1DEV, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t1RSA, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t1DS, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t1PSQIgr, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t1PS, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t1WURSSg, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t1LS, method = "pearson")
+
+cor.test(dat2$t1EXH, dat2$t1DEV, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t1RSA, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t1DS, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t1PSQIgr, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t1PS, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t1WURSSg, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t1LS, method = "pearson")
+
+cor.test(dat2$t1DEV, dat2$t1RSA, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t1DS, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t1PSQIgr, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t1PS, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t1WURSSg, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t1LS, method = "pearson")
+
+cor.test(dat2$t1RSA, dat2$t1DS, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t1PSQIgr, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t1PS, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t1WURSSg, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t1LS, method = "pearson")
+
+cor.test(dat2$t1DS, dat2$t1PSQIgr, method = "pearson")
+cor.test(dat2$t1DS, dat2$t1PS, method = "pearson")
+cor.test(dat2$t1DS, dat2$t1WURSSg, method = "pearson")
+cor.test(dat2$t1DS, dat2$t1LS, method = "pearson")
+
+cor.test(dat2$t1PSQIgr, dat2$t1PS, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t1WURSSg, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t1LS, method = "pearson")
+
+cor.test(dat2$t1PS, dat2$t1WURSSg, method = "pearson")
+cor.test(dat2$t1PS, dat2$t1LS, method = "pearson")
+
+cor.test(dat2$t1WURSSg, dat2$t1LS, method = "pearson")
+
+##across wave 2
+cor.test(dat2$t2BURN, dat2$t2EXH, method = "pearson")
+cor.test(dat2$t2BURN, dat2$t2DEV, method = "pearson")
+cor.test(dat2$t2BURN, dat2$t2RSA, method = "pearson")
+cor.test(dat2$t2BURN, dat2$t2DS, method = "pearson")
+cor.test(dat2$t2BURN, dat2$t2PSQIgr, method = "pearson")
+cor.test(dat2$t2BURN, dat2$t2PS, method = "pearson")
+cor.test(dat2$t2BURN, dat2$t2WURSSg, method = "pearson")
+cor.test(dat2$t2BURN, dat2$t2LS, method = "pearson")
+
+cor.test(dat2$t2EXH, dat2$t2DEV, method = "pearson")
+cor.test(dat2$t2EXH, dat2$t2RSA, method = "pearson")
+cor.test(dat2$t2EXH, dat2$t2DS, method = "pearson")
+cor.test(dat2$t2EXH, dat2$t2PSQIgr, method = "pearson")
+cor.test(dat2$t2EXH, dat2$t2PS, method = "pearson")
+cor.test(dat2$t2EXH, dat2$t2WURSSg, method = "pearson")
+cor.test(dat2$t2EXH, dat2$t2LS, method = "pearson")
+
+cor.test(dat2$t2DEV, dat2$t2RSA, method = "pearson")
+cor.test(dat2$t2DEV, dat2$t2DS, method = "pearson")
+cor.test(dat2$t2DEV, dat2$t2PSQIgr, method = "pearson")
+cor.test(dat2$t2DEV, dat2$t2PS, method = "pearson")
+cor.test(dat2$t2DEV, dat2$t2WURSSg, method = "pearson")
+cor.test(dat2$t2DEV, dat2$t2LS, method = "pearson")
+
+cor.test(dat2$t2RSA, dat2$t2DS, method = "pearson")
+cor.test(dat2$t2RSA, dat2$t2PSQIgr, method = "pearson")
+cor.test(dat2$t2RSA, dat2$t2PS, method = "pearson")
+cor.test(dat2$t2RSA, dat2$t2WURSSg, method = "pearson")
+cor.test(dat2$t2RSA, dat2$t2LS, method = "pearson")
+
+cor.test(dat2$t2DS, dat2$t2PSQIgr, method = "pearson")
+cor.test(dat2$t2DS, dat2$t2PS, method = "pearson")
+cor.test(dat2$t2DS, dat2$t2WURSSg, method = "pearson")
+cor.test(dat2$t2DS, dat2$t2LS, method = "pearson")
+
+cor.test(dat2$t2PSQIgr, dat2$t2PS, method = "pearson")
+cor.test(dat2$t2PSQIgr, dat2$t2WURSSg, method = "pearson")
+cor.test(dat2$t2PSQIgr, dat2$t2LS, method = "pearson")
+
+cor.test(dat2$t2PS, dat2$t2WURSSg, method = "pearson")
+cor.test(dat2$t2PS, dat2$t2LS, method = "pearson")
+
+cor.test(dat2$t2WURSSg, dat2$t2LS, method = "pearson")
+
+##across wave 3
+cor.test(dat2$t3BURN, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t3BURN, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t3BURN, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t3BURN, dat2$t3DS, method = "pearson")
+cor.test(dat2$t3BURN, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t3BURN, dat2$t3PS, method = "pearson")
+cor.test(dat2$t3BURN, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t3BURN, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t3EXH, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t3EXH, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t3EXH, dat2$t3DS, method = "pearson")
+cor.test(dat2$t3EXH, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t3EXH, dat2$t3PS, method = "pearson")
+cor.test(dat2$t3EXH, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t3EXH, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t3DEV, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t3DEV, dat2$t3DS, method = "pearson")
+cor.test(dat2$t3DEV, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t3DEV, dat2$t3PS, method = "pearson")
+cor.test(dat2$t3DEV, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t3DEV, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t3RSA, dat2$t3DS, method = "pearson")
+cor.test(dat2$t3RSA, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t3RSA, dat2$t3PS, method = "pearson")
+cor.test(dat2$t3RSA, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t3RSA, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t3DS, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t3DS, dat2$t3PS, method = "pearson")
+cor.test(dat2$t3DS, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t3DS, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t3PSQIgr, dat2$t3PS, method = "pearson")
+cor.test(dat2$t3PSQIgr, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t3PSQIgr, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t3PS, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t3PS, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t3WURSSg, dat2$t3LS, method = "pearson")
+
+##wave 1 on wave 2
+cor.test(dat2$t1BURN, dat2$t2BURN, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t2EXH, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t2DEV, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t2RSA, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t2DS, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t2PSQIgr, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t2PS, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t2WURSSg, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t2LS, method = "pearson")
+
+cor.test(dat2$t1EXH, dat2$t2BURN, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t2EXH, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t2DEV, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t2RSA, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t2DS, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t2PSQIgr, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t2PS, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t2WURSSg, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t2LS, method = "pearson")
+
+cor.test(dat2$t1DEV, dat2$t2BURN, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t2EXH, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t2DEV, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t2RSA, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t2DS, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t2PSQIgr, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t2PS, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t2WURSSg, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t2LS, method = "pearson")
+
+cor.test(dat2$t1RSA, dat2$t2BURN, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t2EXH, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t2DEV, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t2RSA, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t2DS, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t2PSQIgr, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t2PS, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t2WURSSg, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t2LS, method = "pearson")
+
+cor.test(dat2$t1DS, dat2$t2BURN, method = "pearson")
+cor.test(dat2$t1DS, dat2$t2EXH, method = "pearson")
+cor.test(dat2$t1DS, dat2$t2DEV, method = "pearson")
+cor.test(dat2$t1DS, dat2$t2RSA, method = "pearson")
+cor.test(dat2$t1DS, dat2$t2DS, method = "pearson")
+cor.test(dat2$t1DS, dat2$t2PSQIgr, method = "pearson")
+cor.test(dat2$t1DS, dat2$t2PS, method = "pearson")
+cor.test(dat2$t1DS, dat2$t2WURSSg, method = "pearson")
+cor.test(dat2$t1DS, dat2$t2LS, method = "pearson")
+
+cor.test(dat2$t1PSQIgr, dat2$t2BURN, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t2EXH, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t2DEV, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t2RSA, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t2DS, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t2PSQIgr, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t2PS, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t2WURSSg, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t2LS, method = "pearson")
+
+cor.test(dat2$t1PS, dat2$t2BURN, method = "pearson")
+cor.test(dat2$t1PS, dat2$t2EXH, method = "pearson")
+cor.test(dat2$t1PS, dat2$t2DEV, method = "pearson")
+cor.test(dat2$t1PS, dat2$t2RSA, method = "pearson")
+cor.test(dat2$t1PS, dat2$t2DS, method = "pearson")
+cor.test(dat2$t1PS, dat2$t2PSQIgr, method = "pearson")
+cor.test(dat2$t1PS, dat2$t2PS, method = "pearson")
+cor.test(dat2$t1PS, dat2$t2WURSSg, method = "pearson")
+cor.test(dat2$t1PS, dat2$t2LS, method = "pearson")
+
+cor.test(dat2$t1WURSSg, dat2$t2BURN, method = "pearson")
+cor.test(dat2$t1WURSSg, dat2$t2EXH, method = "pearson")
+cor.test(dat2$t1WURSSg, dat2$t2DEV, method = "pearson")
+cor.test(dat2$t1WURSSg, dat2$t2RSA, method = "pearson")
+cor.test(dat2$t1WURSSg, dat2$t2DS, method = "pearson")
+cor.test(dat2$t1WURSSg, dat2$t2PSQIgr, method = "pearson")
+cor.test(dat2$t1WURSSg, dat2$t2PS, method = "pearson")
+cor.test(dat2$t1WURSSg, dat2$t2WURSSg, method = "pearson")
+cor.test(dat2$t1WURSSg, dat2$t1LS, method = "pearson")
+
+cor.test(dat2$t1LS, dat2$t2BURN, method = "pearson")
+cor.test(dat2$t1LS, dat2$t2EXH, method = "pearson")
+cor.test(dat2$t1LS, dat2$t2DEV, method = "pearson")
+cor.test(dat2$t1LS, dat2$t2RSA, method = "pearson")
+cor.test(dat2$t1LS, dat2$t2DS, method = "pearson")
+cor.test(dat2$t1LS, dat2$t2PSQIgr, method = "pearson")
+cor.test(dat2$t1LS, dat2$t2PS, method = "pearson")
+cor.test(dat2$t1LS, dat2$t2WURSSg, method = "pearson")
+cor.test(dat2$t1LS, dat2$t2LS, method = "pearson")
+
+##wave 1 on wave 3
+cor.test(dat2$t1BURN, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t3DS, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t3PS, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t1BURN, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t1EXH, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t3DS, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t3PS, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t1EXH, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t1DEV, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t3DS, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t3PS, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t1DEV, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t1RSA, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t3DS, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t3PS, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t1RSA, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t1DS, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t1DS, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t1DS, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t1DS, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t1DS, dat2$t3DS, method = "pearson")
+cor.test(dat2$t1DS, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t1DS, dat2$t3PS, method = "pearson")
+cor.test(dat2$t1DS, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t1DS, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t1PSQIgr, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t3DS, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t3PS, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t1PSQIgr, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t1PS, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t1PS, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t1PS, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t1PS, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t1PS, dat2$t3DS, method = "pearson")
+cor.test(dat2$t1PS, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t1PS, dat2$t3PS, method = "pearson")
+cor.test(dat2$t1PS, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t1PS, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t1WURSSg, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t1WURSSg, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t1WURSSg, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t1WURSSg, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t1WURSSg, dat2$t3DS, method = "pearson")
+cor.test(dat2$t1WURSSg, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t1WURSSg, dat2$t3PS, method = "pearson")
+cor.test(dat2$t1WURSSg, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t1WURSSg, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t1LS, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t1LS, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t1LS, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t1LS, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t1LS, dat2$t3DS, method = "pearson")
+cor.test(dat2$t1LS, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t1LS, dat2$t3PS, method = "pearson")
+cor.test(dat2$t1LS, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t1LS, dat2$t3LS, method = "pearson")
+
+#wave 2 on wave 3
+cor.test(dat2$t2BURN, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t2BURN, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t2BURN, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t2BURN, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t2BURN, dat2$t3DS, method = "pearson")
+cor.test(dat2$t2BURN, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t2BURN, dat2$t3PS, method = "pearson")
+cor.test(dat2$t2BURN, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t2BURN, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t2EXH, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t2EXH, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t2EXH, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t2EXH, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t2EXH, dat2$t3DS, method = "pearson")
+cor.test(dat2$t2EXH, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t2EXH, dat2$t3PS, method = "pearson")
+cor.test(dat2$t2EXH, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t2EXH, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t2DEV, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t2DEV, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t2DEV, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t2DEV, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t2DEV, dat2$t3DS, method = "pearson")
+cor.test(dat2$t2DEV, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t2DEV, dat2$t3PS, method = "pearson")
+cor.test(dat2$t2DEV, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t2DEV, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t2RSA, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t2RSA, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t2RSA, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t2RSA, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t2RSA, dat2$t3DS, method = "pearson")
+cor.test(dat2$t2RSA, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t2RSA, dat2$t3PS, method = "pearson")
+cor.test(dat2$t2RSA, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t2RSA, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t2DS, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t2DS, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t2DS, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t2DS, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t2DS, dat2$t3DS, method = "pearson")
+cor.test(dat2$t2DS, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t2DS, dat2$t3PS, method = "pearson")
+cor.test(dat2$t2DS, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t2DS, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t2PSQIgr, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t2PSQIgr, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t2PSQIgr, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t2PSQIgr, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t2PSQIgr, dat2$t3DS, method = "pearson")
+cor.test(dat2$t2PSQIgr, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t2PSQIgr, dat2$t3PS, method = "pearson")
+cor.test(dat2$t2PSQIgr, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t2PSQIgr, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t2PS, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t2PS, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t2PS, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t2PS, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t2PS, dat2$t3DS, method = "pearson")
+cor.test(dat2$t2PS, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t2PS, dat2$t3PS, method = "pearson")
+cor.test(dat2$t2PS, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t2PS, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t2WURSSg, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t2WURSSg, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t2WURSSg, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t2WURSSg, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t2WURSSg, dat2$t3DS, method = "pearson")
+cor.test(dat2$t2WURSSg, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t2WURSSg, dat2$t3PS, method = "pearson")
+cor.test(dat2$t2WURSSg, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t2WURSSg, dat2$t3LS, method = "pearson")
+
+cor.test(dat2$t2LS, dat2$t3BURN, method = "pearson")
+cor.test(dat2$t2LS, dat2$t3EXH, method = "pearson")
+cor.test(dat2$t2LS, dat2$t3DEV, method = "pearson")
+cor.test(dat2$t2LS, dat2$t3RSA, method = "pearson")
+cor.test(dat2$t2LS, dat2$t3DS, method = "pearson")
+cor.test(dat2$t2LS, dat2$t3PSQIgr, method = "pearson")
+cor.test(dat2$t2LS, dat2$t3PS, method = "pearson")
+cor.test(dat2$t2LS, dat2$t3WURSSg, method = "pearson")
+cor.test(dat2$t2LS, dat2$t3LS, method = "pearson")
+```
+
+# Run RI-CLPMs: Standard Models
+All RI-CLPM and model comparison code follows Mulder and Hamaker (2021), link to repository for example code: https://jeroendmulder.github.io/RI-CLPM/lavaan.html
+Please cite their paper when referring to modelling and the provided code. 
+```{r RI-CLPM}
+##depressive symptoms
+#burnout
+RICLPM_DS_B <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1BURN + 1*t2BURN + 1*t3BURN 
+  RIy =~ 1*t1DS + 1*t2DS + 1*t3DS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1BURN
+  wx2 =~ 1*t2BURN
+  wx3 =~ 1*t3BURN
+  wy1 =~ 1*t1DS
+  wy2 =~ 1*t2DS
+  wy3 =~ 1*t3DS
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_DS_B.fit <- lavaan(RICLPM_DS_B,
+  data = dat2, 
+  missing = "ML",
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_DS_B.fit, fit.measures=T, standardized = T, rsquare=T)
+standardizedsolution(RICLPM_DS_B.fit) ##for confidence intervals
+
+#exhaustion
+RICLPM_DS_EXH <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1EXH + 1*t2EXH + 1*t3EXH 
+  RIy =~ 1*t1DS + 1*t2DS + 1*t3DS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1EXH
+  wx2 =~ 1*t2EXH
+  wx3 =~ 1*t3EXH
+  wy1 =~ 1*t1DS
+  wy2 =~ 1*t2DS
+  wy3 =~ 1*t3DS
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_DS_EXH.fit <- lavaan(RICLPM_DS_EXH,
+  data = dat2, 
+  missing = "ML",
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_DS_EXH.fit, fit.measures=T, standardized = T, rsquare=T)
+standardizedsolution(RICLPM_DS_EXH.fit)
+
+#devaluation
+RICLPM_DS_DEV <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1DEV + 1*t2DEV + 1*t3DEV
+  RIy =~ 1*t1DS + 1*t2DS + 1*t3DS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1DEV
+  wx2 =~ 1*t2DEV
+  wx3 =~ 1*t3DEV
+  wy1 =~ 1*t1DS
+  wy2 =~ 1*t2DS
+  wy3 =~ 1*t3DS
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_DS_DEV.fit <- lavaan(RICLPM_DS_DEV,
+  data = dat2, 
+  missing = "ML",
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_DS_DEV.fit, fit.measures=T, standardized = T, rsquare=T)
+standardizedsolution(RICLPM_DS_DEV.fit)
+
+#reduced sense of accomplishment
+RICLPM_DS_RSA <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1RSA + 1*t2RSA + 1*t3RSA 
+  RIy =~ 1*t1DS + 1*t2DS + 1*t3DS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1RSA
+  wx2 =~ 1*t2RSA
+  wx3 =~ 1*t3RSA
+  wy1 =~ 1*t1DS
+  wy2 =~ 1*t2DS
+  wy3 =~ 1*t3DS
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_DS_RSA.fit <- lavaan(RICLPM_DS_RSA,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_DS_RSA.fit, fit.measures=T, standardized = T, rsquare=T)
+standardizedsolution(RICLPM_DS_RSA.fit)
+
+##sleep quality
+#burnout
+RICLPM_SQ_B <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1BURN + 1*t2BURN + 1*t3BURN 
+  RIy =~ 1*t1PSQIgr + 1*t2PSQIgr + 1*t3PSQIgr
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1BURN
+  wx2 =~ 1*t2BURN
+  wx3 =~ 1*t3BURN
+  wy1 =~ 1*t1PSQIgr
+  wy2 =~ 1*t2PSQIgr
+  wy3 =~ 1*t3PSQIgr
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_SQ_B.fit <- lavaan(RICLPM_SQ_B,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_SQ_B.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPM_SQ_B.fit)
+
+#exhaustion
+RICLPM_SQ_EXH <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1EXH + 1*t2EXH + 1*t3EXH 
+  RIy =~ 1*t1PSQIgr + 1*t2PSQIgr + 1*t3PSQIgr
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1EXH
+  wx2 =~ 1*t2EXH
+  wx3 =~ 1*t3EXH
+  wy1 =~ 1*t1PSQIgr
+  wy2 =~ 1*t2PSQIgr
+  wy3 =~ 1*t3PSQIgr
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_SQ_EXH.fit <- lavaan(RICLPM_SQ_EXH,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_SQ_EXH.fit, fit.measures=T, standardized = T, rsquare=T)
+standardizedsolution(RICLPM_SQ_EXH.fit)
+
+#devaluation
+RICLPM_SQ_DEV <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1DEV + 1*t2DEV + 1*t3DEV 
+  RIy =~ 1*t1PSQIgr + 1*t2PSQIgr + 1*t3PSQIgr
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1DEV
+  wx2 =~ 1*t2DEV
+  wx3 =~ 1*t3DEV
+  wy1 =~ 1*t1PSQIgr
+  wy2 =~ 1*t2PSQIgr
+  wy3 =~ 1*t3PSQIgr
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_SQ_DEV.fit <- lavaan(RICLPM_SQ_DEV,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_SQ_DEV.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPM_SQ_DEV.fit)
+
+#reduced sense of accomplishment
+RICLPM_SQ_RSA <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1RSA + 1*t2RSA + 1*t3RSA
+  RIy =~ 1*t1PSQIgr + 1*t2PSQIgr + 1*t3PSQIgr
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1RSA
+  wx2 =~ 1*t2RSA
+  wx3 =~ 1*t3RSA
+  wy1 =~ 1*t1PSQIgr
+  wy2 =~ 1*t2PSQIgr
+  wy3 =~ 1*t3PSQIgr
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_SQ_RSA.fit <- lavaan(RICLPM_SQ_RSA,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_SQ_RSA.fit, fit.measures = T, standardized = T)
+standardizedsolution(RICLPM_SQ_RSA.fit)
+
+##physical symptoms
+#burnout
+RICLPM_PS_B <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1BURN + 1*t2BURN + 1*t3BURN 
+  RIy =~ 1*t1PS + 1*t2PS + 1*t3PS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1BURN
+  wx2 =~ 1*t2BURN
+  wx3 =~ 1*t3BURN
+  wy1 =~ 1*t1PS
+  wy2 =~ 1*t2PS
+  wy3 =~ 1*t3PS
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_PS_B.fit <- lavaan(RICLPM_PS_B,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_PS_B.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPM_PS_B.fit)
+
+#exhaustion
+RICLPM_PS_EXH <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1EXH + 1*t2EXH + 1*t3EXH
+  RIy =~ 1*t1PS + 1*t2PS + 1*t3PS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1EXH
+  wx2 =~ 1*t2EXH
+  wx3 =~ 1*t3EXH
+  wy1 =~ 1*t1PS
+  wy2 =~ 1*t2PS
+  wy3 =~ 1*t3PS
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_PS_EXH.fit <- lavaan(RICLPM_PS_EXH,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_PS_EXH.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPM_PS_EXH.fit)
+
+#devaluation
+RICLPM_PS_DEV <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1DEV + 1*t2DEV + 1*t3DEV
+  RIy =~ 1*t1PS + 1*t2PS + 1*t3PS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1DEV
+  wx2 =~ 1*t2DEV
+  wx3 =~ 1*t3DEV
+  wy1 =~ 1*t1PS
+  wy2 =~ 1*t2PS
+  wy3 =~ 1*t3PS
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_PS_DEV.fit <- lavaan(RICLPM_PS_DEV,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_PS_DEV.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPM_PS_DEV.fit)
+
+#reduced sense of accomplishment
+RICLPM_PS_RSA <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1RSA + 1*t2RSA + 1*t3RSA
+  RIy =~ 1*t1PS + 1*t2PS + 1*t3PS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1RSA
+  wx2 =~ 1*t2RSA
+  wx3 =~ 1*t3RSA
+  wy1 =~ 1*t1PS
+  wy2 =~ 1*t2PS
+  wy3 =~ 1*t3PS
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_PS_RSA.fit <- lavaan(RICLPM_PS_RSA,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_PS_RSA.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPM_PS_RSA.fit)
+
+
+##respiratory symptoms
+#burnout
+RICLPM_URS_B <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1BURN + 1*t2BURN + 1*t3BURN
+  RIy =~ 1*t1WURSSg + 1*t2WURSSg + 1*t3WURSSg
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1BURN
+  wx2 =~ 1*t2BURN
+  wx3 =~ 1*t3BURN
+  wy1 =~ 1*t1WURSSg
+  wy2 =~ 1*t2WURSSg
+  wy3 =~ 1*t3WURSSg
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_URS_B.fit <- lavaan(RICLPM_URS_B,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_URS_B.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPM_URS_B.fit)
+
+#exhaustion
+RICLPM_URS_EXH <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1EXH + 1*t2EXH + 1*t3EXH
+  RIy =~ 1*t1WURSSg + 1*t2WURSSg + 1*t3WURSSg
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1EXH
+  wx2 =~ 1*t2EXH
+  wx3 =~ 1*t3EXH
+  wy1 =~ 1*t1WURSSg
+  wy2 =~ 1*t2WURSSg
+  wy3 =~ 1*t3WURSSg
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_URS_EXH.fit <- lavaan(RICLPM_URS_EXH,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_URS_EXH.fit, fit.measures=T, standardized = T) ##does not converge
+
+#devaluation
+RICLPM_URS_DEV <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1DEV + 1*t2DEV + 1*t3DEV
+  RIy =~ 1*t1WURSSg + 1*t2WURSSg + 1*t3WURSSg
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1DEV
+  wx2 =~ 1*t2DEV
+  wx3 =~ 1*t3DEV
+  wy1 =~ 1*t1WURSSg
+  wy2 =~ 1*t2WURSSg
+  wy3 =~ 1*t3WURSSg
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_URS_DEV.fit <- lavaan(RICLPM_URS_DEV,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_URS_DEV.fit, fit.measures=T, standardized = T) ##misspecified
+
+#reduced sense of accomplishment
+RICLPM_URS_RSA <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1RSA + 1*t2RSA + 1*t3RSA
+  RIy =~ 1*t1WURSSg + 1*t2WURSSg + 1*t3WURSSg
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1RSA
+  wx2 =~ 1*t2RSA
+  wx3 =~ 1*t3RSA
+  wy1 =~ 1*t1WURSSg
+  wy2 =~ 1*t2WURSSg
+  wy3 =~ 1*t3WURSSg
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_URS_RSA.fit <- lavaan(RICLPM_URS_RSA,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_URS_RSA.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPM_URS_RSA.fit)
+
+##life satisfaction
+#burnout
+RICLPM_LS_B <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1BURN + 1*t2BURN + 1*t3BURN
+  RIy =~ 1*t1LS + 1*t2LS + 1*t3LS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1BURN
+  wx2 =~ 1*t2BURN
+  wx3 =~ 1*t3BURN
+  wy1 =~ 1*t1LS
+  wy2 =~ 1*t2LS
+  wy3 =~ 1*t3LS
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_LS_B.fit <- lavaan(RICLPM_LS_B,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_LS_B.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPM_LS_B.fit)
+
+#exhaustion
+RICLPM_LS_EXH <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1EXH + 1*t2EXH + 1*t3EXH
+  RIy =~ 1*t1LS + 1*t2LS + 1*t3LS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1EXH
+  wx2 =~ 1*t2EXH
+  wx3 =~ 1*t3EXH
+  wy1 =~ 1*t1LS
+  wy2 =~ 1*t2LS
+  wy3 =~ 1*t3LS
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_LS_EXH.fit <- lavaan(RICLPM_LS_EXH,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_LS_EXH.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPM_LS_EXH.fit)
+
+#devaluation
+RICLPM_LS_DEV <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1DEV + 1*t2DEV + 1*t3DEV
+  RIy =~ 1*t1LS + 1*t2LS + 1*t3LS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1DEV
+  wx2 =~ 1*t2DEV
+  wx3 =~ 1*t3DEV
+  wy1 =~ 1*t1LS
+  wy2 =~ 1*t2LS
+  wy3 =~ 1*t3LS
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_LS_DEV.fit <- lavaan(RICLPM_LS_DEV,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_LS_DEV.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPM_LS_DEV.fit)
+
+#reduced sense of accomplishment
+RICLPM_LS_RSA <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1RSA + 1*t2RSA + 1*t3RSA
+  RIy =~ 1*t1LS + 1*t2LS + 1*t3LS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1RSA
+  wx2 =~ 1*t2RSA
+  wx3 =~ 1*t3RSA
+  wy1 =~ 1*t1LS
+  wy2 =~ 1*t2LS
+  wy3 =~ 1*t3LS
+
+  # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPM_LS_RSA.fit <- lavaan(RICLPM_LS_RSA,
+  data = dat2, 
+  missing = "ML", 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+)
+
+summary(RICLPM_LS_RSA.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPM_LS_RSA.fit)
+```
+
+# RI-CLPMs with constraints
+Constraints are placed on lagged effects
+```{r RI-CLPM restrictions}
+##depressive symptoms
+#burnout
+RICLPMr_DS_B <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1BURN + 1*t2BURN + 1*t3BURN
+  RIy =~ 1*t1DS + 1*t2DS + 1*t3DS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1BURN
+  wx2 =~ 1*t2BURN
+  wx3 =~ 1*t3BURN
+  wy1 =~ 1*t1DS
+  wy2 =~ 1*t2DS
+  wy3 =~ 1*t3DS
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+  
+'
+RICLPMr_DS_B.fit <- lavaan(RICLPMr_DS_B, 
+  data = dat2, 
+  missing = 'ML', 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_DS_B.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_DS_B.fit)
+
+#exhaustion
+RICLPMr_DS_EXH <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1EXH + 1*t2EXH + 1*t3EXH
+  RIy =~ 1*t1DS + 1*t2DS + 1*t3DS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1EXH
+  wx2 =~ 1*t2EXH
+  wx3 =~ 1*t3EXH
+  wy1 =~ 1*t1DS
+  wy2 =~ 1*t2DS
+  wy3 =~ 1*t3DS
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+  
+'
+RICLPMr_DS_EXH.fit <- lavaan(RICLPMr_DS_EXH, 
+  data = dat2, 
+  missing = 'ML',#
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_DS_EXH.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_DS_EXH.fit)
+
+#devaluation
+RICLPMr_DS_DEV <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1DEV + 1*t2DEV + 1*t3DEV
+  RIy =~ 1*t1DS + 1*t2DS + 1*t3DS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1DEV
+  wx2 =~ 1*t2DEV
+  wx3 =~ 1*t3DEV
+  wy1 =~ 1*t1DS
+  wy2 =~ 1*t2DS
+  wy3 =~ 1*t3DS
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_DS_DEV.fit <- lavaan(RICLPMr_DS_DEV, 
+  data = dat2, 
+  missing = 'ML',
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_DS_DEV.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_DS_DEV.fit)
+
+#RSA
+RICLPMr_DS_RSA <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1RSA + 1*t2RSA + 1*t3RSA
+  RIy =~ 1*t1DS + 1*t2DS + 1*t3DS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1RSA
+  wx2 =~ 1*t2RSA
+  wx3 =~ 1*t3RSA
+  wy1 =~ 1*t1DS
+  wy2 =~ 1*t2DS
+  wy3 =~ 1*t3DS
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_DS_RSA.fit <- lavaan(RICLPMr_DS_RSA, 
+  data = dat2, 
+  missing = 'ML',
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_DS_RSA.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_DS_RSA.fit)
+
+##sleep quality
+#burnout
+RICLPMr_SQ_B <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1BURN + 1*t2BURN + 1*t3BURN
+  RIy =~ 1*t1PSQIgr + 1*t2PSQIgr + 1*t3PSQIgr
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1BURN
+  wx2 =~ 1*t2BURN
+  wx3 =~ 1*t3BURN
+  wy1 =~ 1*t1PSQIgr
+  wy2 =~ 1*t2PSQIgr
+  wy3 =~ 1*t3PSQIgr
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_SQ_B.fit <- lavaan(RICLPMr_SQ_B, 
+  data = dat2, 
+  missing = 'ML', 
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_SQ_B.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_SQ_B.fit)
+
+#exhaustion
+RICLPMr_SQ_EXH <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1EXH + 1*t2EXH + 1*t3EXH
+  RIy =~ 1*t1PSQIgr + 1*t2PSQIgr + 1*t3PSQIgr
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1EXH
+  wx2 =~ 1*t2EXH
+  wx3 =~ 1*t3EXH
+  wy1 =~ 1*t1PSQIgr
+  wy2 =~ 1*t2PSQIgr
+  wy3 =~ 1*t3PSQIgr
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_SQ_EXH.fit <- lavaan(RICLPMr_SQ_EXH, 
+  data = dat2, 
+  missing = 'ML', 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_SQ_EXH.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_SQ_EXH.fit)
+
+#devaluation
+RICLPMr_SQ_DEV <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1DEV + 1*t2DEV + 1*t3DEV
+  RIy =~ 1*t1PSQIgr + 1*t2PSQIgr + 1*t3PSQIgr
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1DEV
+  wx2 =~ 1*t2DEV
+  wx3 =~ 1*t3DEV
+  wy1 =~ 1*t1PSQIgr
+  wy2 =~ 1*t2PSQIgr
+  wy3 =~ 1*t3PSQIgr
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_SQ_DEV.fit <- lavaan(RICLPMr_SQ_DEV, 
+  data = dat2, 
+  missing = 'ML',
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_SQ_DEV.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_SQ_DEV.fit)
+
+#RSA
+RICLPMr_SQ_RSA <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1RSA + 1*t2RSA + 1*t3RSA
+  RIy =~ 1*t1PSQIg + 1*t2PSQIg + 1*t3PSQIg
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1RSA
+  wx2 =~ 1*t2RSA
+  wx3 =~ 1*t3RSA
+  wy1 =~ 1*t1PSQIg
+  wy2 =~ 1*t2PSQIg
+  wy3 =~ 1*t3PSQIg
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_SQ_RSA.fit <- lavaan(RICLPMr_SQ_RSA, 
+  data = dat2, 
+  missing = 'ML', 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_SQ_RSA.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_SQ_RSA.fit)
+
+##physical symptoms
+RICLPMr_PS_B <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1BURN + 1*t2BURN + 1*t3BURN
+  RIy =~ 1*t1PS + 1*t2PS + 1*t3PS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1BURN
+  wx2 =~ 1*t2BURN
+  wx3 =~ 1*t3BURN
+  wy1 =~ 1*t1PS
+  wy2 =~ 1*t2PS
+  wy3 =~ 1*t3PS
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_PS_B.fit <- lavaan(RICLPMr_PS_B, 
+  data = dat2, 
+  missing = 'ML',
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_PS_B.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_PS_B.fit)
+
+#exhaustion
+RICLPMr_PS_EXH <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1EXH + 1*t2EXH + 1*t3EXH
+  RIy =~ 1*t1PS + 1*t2PS + 1*t3PS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1EXH
+  wx2 =~ 1*t2EXH
+  wx3 =~ 1*t3EXH
+  wy1 =~ 1*t1PS
+  wy2 =~ 1*t2PS
+  wy3 =~ 1*t3PS
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_PS_EXH.fit <- lavaan(RICLPMr_PS_EXH, 
+  data = dat2, 
+  missing = 'ML',
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_PS_EXH.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_PS_EXH.fit)
+
+#devaluation
+RICLPMr_PS_DEV <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1DEV + 1*t2DEV + 1*t3DEV
+  RIy =~ 1*t1PS + 1*t2PS + 1*t3PS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1DEV
+  wx2 =~ 1*t2DEV
+  wx3 =~ 1*t3DEV
+  wy1 =~ 1*t1PS
+  wy2 =~ 1*t2PS
+  wy3 =~ 1*t3PS
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_PS_DEV.fit <- lavaan(RICLPMr_PS_DEV, 
+  data = dat2, 
+  missing = 'ML', 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_PS_DEV.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_PS_DEV.fit)
+
+#RSA
+RICLPMr_PS_RSA <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1RSA + 1*t2RSA + 1*t3RSA
+  RIy =~ 1*t1PS + 1*t2PS + 1*t3PS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1RSA
+  wx2 =~ 1*t2RSA
+  wx3 =~ 1*t3RSA
+  wy1 =~ 1*t1PS
+  wy2 =~ 1*t2PS
+  wy3 =~ 1*t3PS
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_PS_RSA.fit <- lavaan(RICLPMr_PS_RSA, 
+  data = dat2, 
+  missing = 'ML',
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_PS_RSA.fit, fit.measures = T, standardized = T)
+standardizedsolution(RICLPMr_PS_RSA.fit)
+
+##respiratory symptoms
+RICLPMr_URS_B <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1BURN + 1*t2BURN + 1*t3BURN
+  RIy =~ 1*t1WURSSg + 1*t2WURSSg + 1*t3WURSSg
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1BURN
+  wx2 =~ 1*t2BURN
+  wx3 =~ 1*t3BURN
+  wy1 =~ 1*t1WURSSg
+  wy2 =~ 1*t2WURSSg
+  wy3 =~ 1*t3WURSSg
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_URS_B.fit <- lavaan(RICLPMr_URS_B, 
+  data = dat2, 
+  missing = 'ML', 
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_URS_B.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_URS_B.fit)
+
+#exhaustion
+RICLPMr_URS_EXH <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1EXH + 1*t2EXH + 1*t3EXH
+  RIy =~ 1*t1WURSSg + 1*t2WURSSg + 1*t3WURSSg
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1EXH
+  wx2 =~ 1*t2EXH
+  wx3 =~ 1*t3EXH
+  wy1 =~ 1*t1WURSSg
+  wy2 =~ 1*t2WURSSg
+  wy3 =~ 1*t3WURSSg
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_URS_EXH.fit <- lavaan(RICLPMr_URS_EXH, 
+  data = dat2, 
+  missing = 'ML',
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_URS_EXH.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_URS_EXH.fit)
+
+#devaluation
+RICLPMr_URS_DEV <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1DEV + 1*t2DEV + 1*t3DEV
+  RIy =~ 1*t1WURSSg + 1*t2WURSSg + 1*t3WURSSg
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1DEV
+  wx2 =~ 1*t2DEV
+  wx3 =~ 1*t3DEV
+  wy1 =~ 1*t1WURSSg
+  wy2 =~ 1*t2WURSSg
+  wy3 =~ 1*t3WURSSg
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_URS_DEV.fit <- lavaan(RICLPMr_URS_DEV, 
+  data = dat2, 
+  missing = 'ML',
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_URS_DEV.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_URS_DEV.fit)
+
+#RSA
+RICLPMr_URS_RSA <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1RSA + 1*t2RSA + 1*t3RSA
+  RIy =~ 1*t1WURSSg + 1*t2WURSSg + 1*t3WURSSg
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1RSA
+  wx2 =~ 1*t2RSA
+  wx3 =~ 1*t3RSA
+  wy1 =~ 1*t1WURSSg
+  wy2 =~ 1*t2WURSSg
+  wy3 =~ 1*t3WURSSg
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_URS_RSA.fit <- lavaan(RICLPMr_URS_RSA, 
+  data = dat2, 
+  missing = 'ML',
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_URS_RSA.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_URS_RSA.fit)
+
+##life satisfaction
+#burnout
+RICLPMr_LS_B <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1BURN + 1*t2BURN + 1*t3BURN
+  RIy =~ 1*t1LS + 1*t2LS + 1*t3LS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1BURN
+  wx2 =~ 1*t2BURN
+  wx3 =~ 1*t3BURN
+  wy1 =~ 1*t1LS
+  wy2 =~ 1*t2LS
+  wy3 =~ 1*t3LS
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_LS_B.fit <- lavaan(RICLPMr_LS_B, 
+  data = dat2, 
+  missing = 'ML',
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_LS_B.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_LS_B.fit)
+
+#exhaustion
+RICLPMr_LS_EXH <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1EXH + 1*t2EXH + 1*t3EXH
+  RIy =~ 1*t1LS + 1*t2LS + 1*t3LS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1EXH
+  wx2 =~ 1*t2EXH
+  wx3 =~ 1*t3EXH
+  wy1 =~ 1*t1LS
+  wy2 =~ 1*t2LS
+  wy3 =~ 1*t3LS
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_LS_EXH.fit <- lavaan(RICLPMr_LS_EXH, 
+  data = dat2, 
+  missing = 'ML',
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_LS_EXH.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_LS_EXH.fit)
+
+#devaluation
+RICLPMr_LS_DEV <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1DEV + 1*t2DEV + 1*t3DEV
+  RIy =~ 1*t1LS + 1*t2LS + 1*t3LS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1DEV
+  wx2 =~ 1*t2DEV
+  wx3 =~ 1*t3DEV
+  wy1 =~ 1*t1LS
+  wy2 =~ 1*t2LS
+  wy3 =~ 1*t3LS
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_LS_DEV.fit <- lavaan(RICLPMr_LS_DEV, 
+  data = dat2, 
+  missing = 'ML',
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_LS_DEV.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_LS_DEV.fit)
+
+#RSA
+RICLPMr_LS_RSA <- '
+  # Create between components (random intercepts)
+  RIx =~ 1*t1RSA + 1*t2RSA + 1*t3RSA
+  RIy =~ 1*t1LS + 1*t2LS + 1*t3LS
+  
+  # Create within-person centered variables
+  wx1 =~ 1*t1RSA
+  wx2 =~ 1*t2RSA
+  wx3 =~ 1*t3RSA
+  wy1 =~ 1*t1LS
+  wy2 =~ 1*t2LS
+  wy3 =~ 1*t3LS
+  
+  # Estimate lagged effects between within-person centered variables 
+  # (constrained)
+  wx2 ~ a*wx1 + b*wy1 
+  wy2 ~ c*wx1 + d*wy1
+  wx3 ~ a*wx2 + b*wy2
+  wy3 ~ c*wx2 + d*wy2
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+  
+  # Estimate (residual) variance of within-person centered variables 
+  wx1 ~~ wx1 # Variance
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variance
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+
+'
+RICLPMr_LS_RSA.fit <- lavaan(RICLPMr_LS_RSA, 
+  data = dat2, 
+  missing = 'ML',
+  estimator = "MLR",
+  meanstructure = T, 
+  int.ov.free = T
+) 
+summary(RICLPMr_LS_RSA.fit, fit.measures=T, standardized = T)
+standardizedsolution(RICLPMr_LS_RSA.fit)
+```
+
+# Model comparisons between standard and constrained models 
+To see which of the models fits the data better.
+```{r model comparisons}
+##set degrees of freedom for all comparisons
+df_riclpmr <- 4
+df_riclpm <- 1
+
+##depression
+##burnout
+# Step 1: Find indices needed for covariance matrix of random intercepts
+vcov(RICLPM_DS_B.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_DS_B.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square
+Chi2_riclpmrdsb <- 3.01
+Chi2_riclpmdsb <- 0.30
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestdsb <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrdsb, Chi2_riclpmdsb, df_riclpmr, df_riclpm)
+ChiBar2DiffTestdsb$DiffChi2
+ChiBar2DiffTestdsb$p_value
+
+##exhaustion
+# Step 1: Find indices needed for covariance matrix of random intercepts
+vcov(RICLPM_DS_EXH.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_DS_EXH.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square
+Chi2_riclpmrdse <- 6.73
+Chi2_riclpmdse <- 0.63
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestdse <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrdse, Chi2_riclpmdse, df_riclpmr, df_riclpm)
+ChiBar2DiffTestdse$DiffChi2
+ChiBar2DiffTestdse$p_value
+
+##devaluation
+vcov(RICLPM_DS_DEV.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_DS_DEV.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square
+Chi2_riclpmrdsd <- 5.49
+Chi2_riclpmdsd <- 0.23
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestdsd <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrdsd, Chi2_riclpmdsd, df_riclpmr, df_riclpm)
+ChiBar2DiffTestdsd$DiffChi2
+ChiBar2DiffTestdsd$p_value
+
+##rsa
+vcov(RICLPM_DS_RSA.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_DS_RSA.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square and degrees of freedom
+Chi2_riclpmrdsr <- 6.04
+Chi2_riclpmdsr <- 1.62
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestdsr <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrdsr, Chi2_riclpmdsr, df_riclpmr, df_riclpm)
+ChiBar2DiffTestdsr$DiffChi2
+ChiBar2DiffTestdsr$p_value
+
+
+##sleep quality
+##burnout
+# Step 1: Find indices needed for covariance matrix of random intercepts
+vcov(RICLPM_SQ_B.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_SQ_B.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square
+Chi2_riclpmrsqb <- 2.71
+Chi2_riclpmsqb <- 2.20
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestsqb <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrsqb, Chi2_riclpmsqb, df_riclpmr, df_riclpm)
+ChiBar2DiffTestsqb$DiffChi2
+ChiBar2DiffTestsqb$p_value
+
+##exhaustion
+# Step 1: Find indices needed for covariance matrix of random intercepts
+vcov(RICLPM_SQ_EXH.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_SQ_EXH.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square
+Chi2_riclpmrsqe <- 8.41
+Chi2_riclpmsqe <- 6.33
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestsqe <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrsqe, Chi2_riclpmsqe, df_riclpmr, df_riclpm)
+ChiBar2DiffTestsqe$DiffChi2
+ChiBar2DiffTestsqe$p_value
+
+##devaluation
+vcov(RICLPM_SQ_DEV.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_SQ_DEV.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square
+Chi2_riclpmrsqd <- 5.08
+Chi2_riclpmsqd <- 2.4
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestsqd <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrsqd, Chi2_riclpmsqd, df_riclpmr, df_riclpm)
+ChiBar2DiffTestsqd$DiffChi2
+ChiBar2DiffTestsqd$p_value
+
+##rsa
+vcov(RICLPM_SQ_RSA.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_SQ_RSA.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square and degrees of freedom
+Chi2_riclpmrsqr <- 3.325
+Chi2_riclpmsqr <- 0.059
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestsqr <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrsqr, Chi2_riclpmsqr, df_riclpmr, df_riclpm)
+ChiBar2DiffTestsqr$DiffChi2
+ChiBar2DiffTestsqr$p_value
+
+
+##physical symptoms
+##burnout
+# Step 1: Find indices needed for covariance matrix of random intercepts
+vcov(RICLPM_PS_B.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_PS_B.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square
+Chi2_riclpmrpsb <- 6.67
+Chi2_riclpmpsb <- 1.41
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestpsb <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrpsb, Chi2_riclpmpsb, df_riclpmr, df_riclpm)
+ChiBar2DiffTestpsb$DiffChi2
+ChiBar2DiffTestpsb$p_value
+
+##exhaustion
+# Step 1: Find indices needed for covariance matrix of random intercepts
+vcov(RICLPM_PS_EXH.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_PS_EXH.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square
+Chi2_riclpmrpse <- 5.88
+Chi2_riclpmpse <- 0.038
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestpse <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrpse, Chi2_riclpmpse, df_riclpmr, df_riclpm)
+ChiBar2DiffTestpse$DiffChi2
+ChiBar2DiffTestpse$p_value
+
+##devaluation
+vcov(RICLPM_PS_DEV.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_PS_DEV.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square
+Chi2_riclpmrpsd <- 3.17
+Chi2_riclpmpsd <- 0.1
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestpsd <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrpsd, Chi2_riclpmpsd, df_riclpmr, df_riclpm)
+ChiBar2DiffTestpsd$DiffChi2
+ChiBar2DiffTestpsd$p_value
+
+##RSA
+vcov(RICLPM_PS_RSA.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_PS_RSA.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square
+Chi2_riclpmrpsr <- 10.35
+Chi2_riclpmpsr <- 6.87
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestpsd <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrpsr, Chi2_riclpmpsr, df_riclpmr, df_riclpm)
+ChiBar2DiffTestpsd$DiffChi2
+ChiBar2DiffTestpsd$p_value
+
+
+##WURSS
+##burnout
+# Step 1: Find indices needed for covariance matrix of random intercepts
+vcov(RICLPM_URS_B.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_URS_B.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square
+Chi2_riclpmrursb <- 3.45
+Chi2_riclpmursb <- 0.00
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestursb <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrursb, Chi2_riclpmursb, df_riclpmr, df_riclpm)
+ChiBar2DiffTestursb$DiffChi2
+ChiBar2DiffTestursb$p_value
+
+##rsa
+vcov(RICLPM_URS_RSA.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_URS_RSA.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square and degrees of freedom
+Chi2_riclpmrursr <- 7.44
+Chi2_riclpmursr <- 0.006
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestursr <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrursr, Chi2_riclpmursr, df_riclpmr, df_riclpm)
+ChiBar2DiffTestursr$DiffChi2
+ChiBar2DiffTestursr$p_value
+
+##life satisfaction
+##burnout
+# Step 1: Find indices needed for covariance matrix of random intercepts
+vcov(RICLPM_LS_B.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_LS_B.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square
+Chi2_riclpmrlsb <- 8.45
+Chi2_riclpmlsb <- 0.033
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestlsb <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrlsb, Chi2_riclpmlsb, df_riclpmr, df_riclpm)
+ChiBar2DiffTestlsb$DiffChi2
+ChiBar2DiffTestlsb$p_value
+
+##exhaustion
+# Step 1: Find indices needed for covariance matrix of random intercepts
+vcov(RICLPM_LS_EXH.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_LS_EXH.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square
+Chi2_riclpmrlse <- 7.14
+Chi2_riclpmlse <- 0.4
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestlse <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrlse, Chi2_riclpmlse, df_riclpmr, df_riclpm)
+ChiBar2DiffTestlse$DiffChi2
+ChiBar2DiffTestlse$p_value
+
+##devaluation
+vcov(RICLPM_LS_DEV.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_LS_DEV.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square
+Chi2_riclpmrlsd <- 6.24
+Chi2_riclpmlsd <- 0.22
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestlsd <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrlsd, Chi2_riclpmlsd, df_riclpmr, df_riclpm)
+ChiBar2DiffTestlsd$DiffChi2
+ChiBar2DiffTestlsd$p_value
+
+##rsa
+vcov(RICLPM_LS_RSA.fit) # Full covariance matrix
+indices <- c(22, 23) # The 22nd and 23rd indices regard random intercepts
+q <- length(indices) # Number of random intercepts
+S <- vcov(RICLPM_LS_RSA.fit)[indices, indices] # Extract covariance matrix of random intercepts
+
+# Step 2: Input Chi-square and degrees of freedom
+Chi2_riclpmrlsr <- 8.06
+Chi2_riclpmlsr <- 0.42
+
+# Step 3: Perform Chi-bar-square test (and obtain Chi-bar-square weights)
+ChiBar2DiffTestlsr <- ChiBarSq.DiffTest(q, S, Chi2_riclpmrlsr, Chi2_riclpmlsr, df_riclpmr, df_riclpm)
+ChiBar2DiffTestlsr$DiffChi2
+ChiBar2DiffTestlsr$p_value
+```
+

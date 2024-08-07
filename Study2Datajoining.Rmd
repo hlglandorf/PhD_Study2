@@ -1,0 +1,493 @@
+---
+title: "Study2 Data Joining"
+author: "H.L. Glandorf"
+date: "2023-06-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Psych Study Wrangling Part 2
+This code file prepares the data for the next stage (data analysis).
+
+In this second stage of data cleaning, these are the objectives:
+- reverse code negatively coded items
+- calculate composite and global scores for each individual (add the wave to it, so joining gets easier)
+- join the 3 files in a number of ways (1: keeping all data, 2: keep only data from those participant who completed at least 2 waves)
+
+# Load relevant libraries
+```{r libraries}
+library(tidyverse)
+library(ggplot2)
+library(psych)
+library(readxl)
+library(semTools)
+```
+
+# Loading data (wave 1, wave 2, wave 3)
+```{r load data}
+dat1 <- read_csv("s2data/S3_W1_NAchecked.csv")
+dat2 <- read_csv("s2data/S3_W2_NAchecked.csv")
+dat3 <- read_csv("s2data/S3_W3_NAchecked.csv")
+```
+
+# Reverse coding for the ABQ (burnout measure) and CESD (depression measure)
+Items to be reverse coded: 
+- ABQ1 and ABQ14
+- CESD12, CESD16
+```{r reverse coding}
+dat1 <- dat1 %>% mutate(ABQ1_rev = recode(ABQ1,
+                                       `4`=0,
+                                       `3`=1,
+                                       `2`=2,
+                                       `1`=3,
+                                       `0`=4),
+                        ABQ14_rev = recode(ABQ14,
+                                       `4`=0,
+                                       `3`=1,
+                                       `2`=2,
+                                       `1`=3,
+                                       `0`=4),
+                        CESD12_rev = recode(CESD12,
+                                        `3`=0,
+                                        `2`=1,
+                                        `1`=2,
+                                        `0`=3),
+                        CESD16_rev = recode(CESD16,
+                                        `3`=0,
+                                        `2`=1,
+                                        `1`=2,
+                                        `0`=3))
+
+dat2 <- dat2 %>% mutate(ABQ1_rev = recode(ABQ1,
+                                       `4`=0,
+                                       `3`=1,
+                                       `2`=2,
+                                       `1`=3,
+                                       `0`=4),
+                        ABQ14_rev = recode(ABQ14,
+                                       `4`=0,
+                                       `3`=1,
+                                       `2`=2,
+                                       `1`=3,
+                                       `0`=4),
+                        CESD12_rev = recode(CESD12,
+                                        `3`=0,
+                                        `2`=1,
+                                        `1`=2,
+                                        `0`=3),
+                        CESD16_rev = recode(CESD16,
+                                        `3`=0,
+                                        `2`=1,
+                                        `1`=2,
+                                        `0`=3))
+
+dat3 <- dat3 %>% mutate(ABQ1_rev = recode(ABQ1,
+                                       `4`=0,
+                                       `3`=1,
+                                       `2`=2,
+                                       `1`=3,
+                                       `0`=4),
+                        ABQ14_rev = recode(ABQ14,
+                                       `4`=0,
+                                       `3`=1,
+                                       `2`=2,
+                                       `1`=3,
+                                       `0`=4),
+                        CESD12_rev = recode(CESD12,
+                                        `3`=0,
+                                        `2`=1,
+                                        `1`=2,
+                                        `0`=3),
+                        CESD16_rev = recode(CESD16,
+                                        `3`=0,
+                                        `2`=1,
+                                        `1`=2,
+                                        `0`=3))
+```
+
+# Calculating total scores for each wave
+Here total scores are computed and a wave indicator added to each repeated measure (e.g., w1DEV and w2DEV for wave 1 and wave 2 devaluation measure)
+From here on forward: 
+- dat files have all information (including item scores)
+- dwave files have selected total scores (to reduce number of columns)
+```{r compute composite scores}
+dat1 <- dat1 %>% mutate(t1trainingload = training_load, # mutating to add wave tag
+                        t1medication = medication,
+                        t1season=season,
+                        t1DEV = (ABQ3+ABQ5+ABQ9+ABQ11+ABQ15)/5, #calculating dimensions scores for burnout
+                        t1EXH = (ABQ2+ABQ4+ABQ8+ABQ10+ABQ12)/5,
+                        t1RSA = (ABQ1_rev+ABQ5+ABQ7+ABQ13+ABQ14_rev)/5,
+                        t1BURN = (t1DEV+t1EXH+t1RSA)/3, ##Burnout global
+                        t1PS = PSym1+PSym2+PSym3+PSym4+PSym5+PSym6+PSym7+PSym8+PSym9+ ##PS global
+                          PSym10+PSym11+PSym12+PSym13+PSym14+PSym15+PSym16+PSym17+PSym18,
+                        t1DS = CESD1+CESD2+CESD3+CESD4+CESD5+CESD6+CESD7+CESD8+CESD9+ ##CESD global
+                          CESD10+CESD11+CESD12_rev+CESD13+CESD14+CESD15+CESD16_rev+CESD17+CESD18+CESD19+CESD20,
+                        t1WURSSg = URI1+URI2+URI3+URI4+URI5+URI6+URI7+URI8+URI9+URI10, ##WURSS global
+                        t1WURSSc = URI11, ##WURSS change
+                        t1LS = LSS1+LSS2+LSS3+LSS4+LSS5, ##SWL global
+                        t1PSQI_c1 = PSQI9, # determining PSQI component scores
+                        PSQI_c2p = PSQI2+PSQI5a,
+                        t1PSQI_c2 = recode(PSQI_c2p,
+                                         `0`=0,
+                                         `1`=1,
+                                         `2`=1,
+                                         `3`=2,
+                                         `4`=2,
+                                         `5`=3,
+                                         `6`=3),
+                        t1PSQI_c3 = PSQI4,
+                        PSQI4hrs = recode(PSQI4,
+                                          `0`=0,
+                                          `1`=3,
+                                          `2`=6,
+                                          `3`=9),
+                        PSQI_c4p = (PSQI4hrs/(PSQI3-PSQI1)*100),
+                        t1PSQI_c4 = case_when(PSQI_c4p >85 ~ 0,
+                                            PSQI_c4p >75 ~ 1,
+                                            PSQI_c4p >65 ~ 2,
+                                            TRUE ~ 3),
+                        PSQI_c5p = PSQI5b+PSQI5c+PSQI5d+PSQI5e+PSQI5f+PSQI5g+PSQI5h+PSQI5i+PSQI5j,
+                        t1PSQI_c5 = case_when(PSQI_c5p >= 19 ~ 3,
+                                            PSQI_c5p >= 10 ~ 2,
+                                            PSQI_c5p >= 1 ~ 1,
+                                            TRUE ~ 0),
+                        t1PSQI_c6 = PSQI6,
+                        PSQI_c7p = PSQI7+PSQI8,
+                        t1PSQI_c7 = recode(PSQI_c7p,
+                                         `0`=0,
+                                         `1`=1,
+                                         `2`=1,
+                                         `3`=2,
+                                         `4`=2,
+                                         `5`=3,
+                                         `6`=3),
+                        t1PSQIg = t1PSQI_c1+t1PSQI_c2+t1PSQI_c3+t1PSQI_c4+t1PSQI_c5+
+                          t1PSQI_c6+t1PSQI_c7, # PSQI global score with all components
+                        t1PSQIgr = t1PSQI_c1+t1PSQI_c2+t1PSQI_c3+t1PSQI_c5+
+                          t1PSQI_c7) ##PSQI global with reduced components due to internal consistency issues (see below)
+dwave1 <- dat1 %>% select(mental_disorder, pain_meds, email, institution, bio_sex, age, sport_type, injury,
+                          t1trainingload, comp_years, t1medication, t1season, t1DEV, t1EXH, t1RSA, t1BURN, t1PS,
+                          t1DS,t1WURSSc,t1WURSSg,t1LS,t1PSQI_c1,t1PSQI_c2,t1PSQI_c3,t1PSQI_c4,t1PSQI_c5,
+                          t1PSQI_c5,t1PSQI_c6,t1PSQI_c7,t1PSQIg,t1PSQIgr)
+
+dat2 <- dat2 %>% mutate(t2trainingload = training_load,
+                        t2medication = medication,
+                        t2season=season,
+                        t2DEV = (ABQ3+ABQ5+ABQ9+ABQ11+ABQ15)/5,
+                        t2EXH = (ABQ2+ABQ4+ABQ8+ABQ10+ABQ12)/5,
+                        t2RSA = (ABQ1_rev+ABQ5+ABQ7+ABQ13+ABQ14_rev)/5,
+                        t2BURN = (t2DEV+t2EXH+t2RSA)/3, ##Burnout global
+                        t2PS = PSym1+PSym2+PSym3+PSym4+PSym5+PSym6+PSym7+PSym8+PSym9+ ##PS global
+                          PSym10+PSym11+PSym12+PSym13+PSym14+PSym15+PSym16+PSym17+PSym18,
+                        t2DS = CESD1+CESD2+CESD3+CESD4+CESD5+CESD6+CESD7+CESD8+CESD9+ ##CESD global
+                          CESD10+CESD11+CESD12_rev+CESD13+CESD14+CESD15+CESD16_rev+CESD17+CESD18+CESD19+CESD20,
+                        t2WURSSg = URI1+URI2+URI3+URI4+URI5+URI6+URI7+URI8+URI9+URI10, ##WURSS global
+                        t2WURSSc = URI11, ##WURSS change
+                        t2LS = LSS1+LSS2+LSS3+LSS4+LSS5, ##SWL global
+                        t2PSQI_c1 = PSQI9,
+                        PSQI_c2p = PSQI2+PSQI5a,
+                        t2PSQI_c2 = recode(PSQI_c2p,
+                                         `0`=0,
+                                         `1`=1,
+                                         `2`=1,
+                                         `3`=2,
+                                         `4`=2,
+                                         `5`=3,
+                                         `6`=3),
+                        t2PSQI_c3 = PSQI4,
+                        PSQI4hrs = recode(PSQI4,
+                                          `0`=0,
+                                          `1`=3,
+                                          `2`=6,
+                                          `3`=9),
+                        PSQI_c4p = (PSQI4hrs/(PSQI3-PSQI1)*100),
+                        t2PSQI_c4 = case_when(PSQI_c4p >85 ~ 0,
+                                            PSQI_c4p >75 ~ 1,
+                                            PSQI_c4p >65 ~ 2,
+                                            TRUE ~ 3),
+                        PSQI_c5p = PSQI5b+PSQI5c+PSQI5d+PSQI5e+PSQI5f+PSQI5g+PSQI5h+PSQI5i+PSQI5j,
+                        t2PSQI_c5 = case_when(PSQI_c5p >= 19 ~ 3,
+                                            PSQI_c5p >= 10 ~ 2,
+                                            PSQI_c5p >= 1 ~ 1,
+                                            TRUE ~ 0),
+                        t2PSQI_c6 = PSQI6,
+                        PSQI_c7p = PSQI7+PSQI8,
+                        t2PSQI_c7 = recode(PSQI_c7p,
+                                         `0`=0,
+                                         `1`=1,
+                                         `2`=1,
+                                         `3`=2,
+                                         `4`=2,
+                                         `5`=3,
+                                         `6`=3),
+                        t2PSQIg = t2PSQI_c1+t2PSQI_c2+t2PSQI_c3+t2PSQI_c4+t2PSQI_c5+
+                          t2PSQI_c6+t2PSQI_c7, ##PSQI global
+                        t2PSQIgr = t2PSQI_c1+t2PSQI_c2+t2PSQI_c3+t2PSQI_c5+t2PSQI_c7) 
+dwave2 <- dat2 %>% select(email, t2trainingload, t2medication, t2season, t2DEV, t2EXH, t2RSA, t2BURN, t2PS, 
+                          t2DS,t2WURSSc,t2WURSSg,t2LS,t2PSQI_c1,t2PSQI_c2,t2PSQI_c3,t2PSQI_c4,t2PSQI_c5,
+                          t2PSQI_c5,t2PSQI_c6,t2PSQI_c7,t2PSQIg,t2PSQIgr)
+
+dat3 <- dat3 %>% mutate(t3trainingload = training_load,
+                        t3medication = medication,
+                        t3season=season,
+                        t3DEV = (ABQ3+ABQ5+ABQ9+ABQ11+ABQ15)/5,
+                        t3EXH = (ABQ2+ABQ4+ABQ8+ABQ10+ABQ12)/5,
+                        t3RSA = (ABQ1_rev+ABQ5+ABQ7+ABQ13+ABQ14_rev)/5,
+                        t3BURN = (t3DEV+t3EXH+t3RSA)/3, ##Burnout global
+                        t3PS = PSym1+PSym2+PSym3+PSym4+PSym5+PSym6+PSym7+PSym8+PSym9+ ##PS global
+                          PSym10+PSym11+PSym12+PSym13+PSym14+PSym15+PSym16+PSym17+PSym18,
+                        t3DS = CESD1+CESD2+CESD3+CESD4+CESD5+CESD6+CESD7+CESD8+CESD9+ ##CESD global
+                          CESD10+CESD11+CESD12_rev+CESD13+CESD14+CESD15+CESD16_rev+CESD17+CESD18+CESD19+CESD20,
+                        t3WURSSg = URI1+URI2+URI3+URI4+URI5+URI6+URI7+URI8+URI9+URI10, ##WURSS global
+                        t3WURSSc = URI11, ##WURSS change
+                        t3LS = LSS1+LSS2+LSS3+LSS4+LSS5, ##SWL global
+                        t3PSQI_c1 = PSQI9,
+                        PSQI_c2p = PSQI2+PSQI5a,
+                        t3PSQI_c2 = recode(PSQI_c2p,
+                                         `0`=0,
+                                         `1`=1,
+                                         `2`=1,
+                                         `3`=2,
+                                         `4`=2,
+                                         `5`=3,
+                                         `6`=3),
+                        t3PSQI_c3 = PSQI4,
+                        PSQI4hrs = recode(PSQI4,
+                                          `0`=0,
+                                          `1`=3,
+                                          `2`=6,
+                                          `3`=9),
+                        PSQI_c4p = (PSQI4hrs/(PSQI3-PSQI1)*100),
+                        t3PSQI_c4 = case_when(PSQI_c4p >85 ~ 0,
+                                            PSQI_c4p >75 ~ 1,
+                                            PSQI_c4p >65 ~ 2,
+                                            TRUE ~ 3),
+                        PSQI_c5p = PSQI5b+PSQI5c+PSQI5d+PSQI5e+PSQI5f+PSQI5g+PSQI5h+PSQI5i+PSQI5j,
+                        t3PSQI_c5 = case_when(PSQI_c5p >= 19 ~ 3,
+                                            PSQI_c5p >= 10 ~ 2,
+                                            PSQI_c5p >= 1 ~ 1,
+                                            TRUE ~ 0),
+                        t3PSQI_c6 = PSQI6,
+                        PSQI_c7p = PSQI7+PSQI8,
+                        t3PSQI_c7 = recode(PSQI_c7p,
+                                         `0`=0,
+                                         `1`=1,
+                                         `2`=1,
+                                         `3`=2,
+                                         `4`=2,
+                                         `5`=3,
+                                         `6`=3),
+                        t3PSQIg = t3PSQI_c1+t3PSQI_c2+t3PSQI_c3+t3PSQI_c4+t3PSQI_c5+t3PSQI_c6+t3PSQI_c7,
+                        t3PSQIgr = t3PSQI_c1+t3PSQI_c2+t3PSQI_c3+t3PSQI_c5+t3PSQI_c7) ##PSQI global
+dwave3 <- dat3 %>% select(email, t3trainingload, t3medication, t3season, t3DEV, t3EXH, t3RSA, t3BURN, t3PS, 
+                          t3DS,t3WURSSc,t3WURSSg,t3LS,t3PSQI_c1,t3PSQI_c2,t3PSQI_c3,t3PSQI_c4,t3PSQI_c5,
+                          t3PSQI_c5,t3PSQI_c6,t3PSQI_c7,t3PSQIg,t3PSQIgr)
+```
+
+# Checking internal consistency (omega) of each questionnaire
+Results from here have fed back into coding above (e.g., a global score with all items and a global score with reduced number of items has been calculated for the PSQI - sleep measure)
+```{r reliability check}
+##exhaustion
+model_exh <-'
+# measurement model
+exh =~ ABQ2+ABQ4+ABQ8+ABQ10+ABQ12
+'
+fit_exh <- lavaan::sem(model = model_exh, data = dat1, missing = "ml")
+summary(fit_exh, fit.measures=TRUE, rsquare = T, standardized = T)
+semTools::reliability(fit_exh)
+
+##devaluation
+model_dev <-'
+# measurement model
+dev =~ ABQ3+ABQ5+ABQ9+ABQ11+ABQ15
+'
+fit_dev <- lavaan::sem(model = model_dev, data = dat1, missing = "ml")
+summary(fit_dev, fit.measures=TRUE, rsquare = T, standardized = T)
+semTools::reliability(fit_dev)
+
+##RSA
+model_rsa <-'
+# measurement model
+dev =~ ABQ1_rev+ABQ5+ABQ7+ABQ13+ABQ14_rev
+'
+fit_rsa <- lavaan::sem(model = model_rsa, data = dat1, missing = "ml")
+summary(fit_rsa, fit.measures=TRUE, rsquare = T, standardized = T)
+semTools::reliability(fit_rsa)
+
+##TBO
+model_tbo <-'
+# measurement model
+tbo=~ ABQ1+ABQ2+ABQ3+ABQ4+ABQ5+ABQ6+ABQ7+ABQ8+ABQ9+ABQ10+ABQ11+ABQ12+ABQ13+ABQ14+ABQ15
+'
+fit_tbo <- lavaan::sem(model = model_tbo, data = dat1, missing = "ml")
+summary(fit_tbo, fit.measures=TRUE, rsquare = T, standardized = T)
+semTools::reliability(fit_tbo)
+
+##PSQI
+model_psqi <-'
+psqi =~ t1PSQI_c1+t1PSQI_c2+t1PSQI_c3+t1PSQI_c5+ 
+                          t1PSQI_c7
+'
+fit_psqi <- lavaan::sem(model = model_psqi, data = dat1, missing = "ML")
+summary(fit_psqi, fit.measures=T, rsquare=T, standardized=T) # for the PSQI, 2 components had to be removed for internal consistency
+semTools::reliability(fit_psqi)
+
+##depressive symptoms
+model_ds <-'
+# measurement model
+ds=~ CESD1+CESD2+CESD3+CESD4+CESD5+CESD6+CESD7+CESD8+CESD9+CESD10+CESD11+CESD12_rev+CESD13+
+CESD14+CESD15+CESD16_rev+CESD17+CESD18+CESD19+CESD20
+'
+fit_ds <- lavaan::sem(model = model_ds, data = dat1, missing = "ml")
+summary(fit_ds, fit.measures=TRUE, rsquare = T, standardized = T)
+semTools::reliability(fit_ds)
+
+##physical symptoms
+model_ps <-'
+# measurement model
+ps=~ PSym1+PSym2+PSym3+PSym4+PSym5+PSym6+PSym7+PSym8+PSym9+
+PSym10+PSym11+PSym12+PSym13+PSym14+PSym15+PSym16+PSym17+PSym18
+'
+fit_ps <- lavaan::sem(model = model_ps, data = dat1, missing = "ml")
+summary(fit_ps, fit.measures=TRUE, rsquare = T, standardized = T)
+semTools::reliability(fit_ps)
+
+##WURSS
+model_urs <-'
+# measurement model
+urs=~ URI1+URI2+URI3+URI4+URI5+URI6+URI7+URI8+URI9+URI10
+'
+fit_urs <- lavaan::sem(model = model_urs, data = dat1, missing = "ml")
+summary(fit_urs, fit.measures=TRUE, rsquare = T, standardized = T)
+semTools::reliability(fit_urs)
+
+##LS
+model_ls <-'
+# measurement model
+ls=~ LSS1+LSS2+LSS3+LSS4+LSS5
+'
+fit_ls <- lavaan::sem(model = model_ls, data = dat1, missing = "ml")
+summary(fit_ls, fit.measures=TRUE, rsquare = T, standardized = T)
+semTools::reliability(fit_ls)
+```
+
+# Joining data files across waves
+Check for duplicates first
+```{r}
+dupcheck2 <- dwave2 %>% group_by(email) %>% summarise(n()) 
+dupcheck1 <- dwave1 %>% group_by(email) %>% summarise(n())
+```
+
+Creating different files via different joins (mostly inner and full join)
+```{r inner join}
+##wave 1+2, wave1+3, wave2+3, wave1+2+3 only
+w1w2 <- inner_join(dwave1, dwave2, by = "email")
+w1w3 <- inner_join(dwave1, dwave3, by = "email")
+w2w3 <- inner_join(dwave2, dwave3, by = "email")
+w1w2w3 <- inner_join(w1w2, dwave3, by = "email")
+
+##all waves together
+full <- list(dwave1, dwave2, dwave3) %>% reduce(full_join, by="email")
+
+##dataframe with only those who have two or more waves completed
+half1 <- merge(dwave2, dwave3, by = "email", all = T) ## wave 2 and 3 joined where possible, otherwise NA created
+half2 <- half1 %>% inner_join(dwave1, test, by="email") ## wave23 inner joined with wave 1
+```
+
+Cleaning files for analysis
+- adding id for anonymisation purposes and ordering variables for ease in analysis stage
+```{r}
+##two wave data only
+twowave <- w1w2 %>% 
+  mutate(id = 1:nrow(w1w2)) %>%
+  select(id, bio_sex, age, sport_type, mental_disorder, pain_meds, injury, comp_years, #demographics
+         t1trainingload, t1medication, t1season, #t1 wave parameters
+         t1BURN, t1DEV, t1EXH, t1RSA, #t1 burnout
+         t1DS, #t1 depressive symptoms
+         t1PS, t1WURSSc, t1WURSSg, #t1 somatic symptoms and URTI
+         t1PSQI_c1, t1PSQI_c2, t1PSQI_c3, t1PSQI_c4, t1PSQI_c5, t1PSQI_c6, t1PSQI_c7, t1PSQIg, t1PSQIgr,#t1 sleep
+         t1LS, #t1 life satisfaction
+         t2trainingload, t2medication, t2season, #t2 wave parameters
+         t2BURN, t2DEV, t2EXH, t2RSA, #t2 burnout
+         t2DS, #t2 depressive symptoms
+         t2PS, t2WURSSc, t2WURSSg, #t2 physical symptoms and URTI
+         t2PSQI_c1, t2PSQI_c2, t2PSQI_c3, t2PSQI_c4, t2PSQI_c5, t2PSQI_c6, t2PSQI_c7, t2PSQIg, t2PSQIgr,#t2 sleep
+         t2LS) #t2 life satisfaction
+##three wave data only
+threewave <- w1w2w3 %>% 
+  mutate(id = 1:nrow(w1w2w3)) %>%
+  select(id, bio_sex, age, sport_type, mental_disorder, pain_meds, injury, comp_years, #demographics
+         t1trainingload, t1medication, t1season, #t1 wave parameters
+         t1BURN, t1DEV, t1EXH, t1RSA, #t1 burnout
+         t1DS, #t1 depressive symptoms
+         t1PS, t1WURSSc, t1WURSSg, #t1 somatic symptoms and URTI
+         t1PSQI_c1, t1PSQI_c2, t1PSQI_c3, t1PSQI_c4, t1PSQI_c5, t1PSQI_c6, t1PSQI_c7, t1PSQIg, t1PSQIgr, #t1 sleep
+         t1LS, #t1 life satisfaction
+         t2trainingload, t2medication, t2season, #t2 wave parameters
+         t2BURN, t2DEV, t2EXH, t2RSA, #t2 burnout
+         t2DS, #t2 depressive symptoms
+         t2PS, t2WURSSc, t2WURSSg, #t2 physical symptoms and URTI
+         t2PSQI_c1, t2PSQI_c2, t2PSQI_c3, t2PSQI_c4, t2PSQI_c5, t2PSQI_c6, t2PSQI_c7, t2PSQIg, t2PSQIgr,#t2 sleep
+         t2LS, #t2 life satisfaction
+         t3trainingload, t3medication, t3season, #t3 wave parameters
+         t3BURN, t3DEV, t3EXH, t3RSA, #t3 burnout
+         t3DS, #t3 depressive symptoms
+         t3PS, t3WURSSc, t3WURSSg, #t2 physical symptoms and URTI
+         t3PSQI_c1, t3PSQI_c2, t3PSQI_c3, t3PSQI_c4, t3PSQI_c5, t3PSQI_c6, t3PSQI_c7, t3PSQIg, t3PSQIgr, #t3 sleep
+         t3LS) #t3 life satisfaction
+#all data that was collected
+full <- full %>% 
+  mutate(id = 1:nrow(full)) %>%
+  select(id, bio_sex, age, sport_type, mental_disorder, pain_meds, injury, comp_years, #demographics
+         t1trainingload, t1medication, t1season, #t1 wave parameters
+         t1BURN, t1DEV, t1EXH, t1RSA, #t1 burnout
+         t1DS, #t1 depressive symptoms
+         t1PS, t1WURSSc, t1WURSSg, #t1 somatic symptoms and URTI
+         t1PSQI_c1, t1PSQI_c2, t1PSQI_c3, t1PSQI_c4, t1PSQI_c5, t1PSQI_c6, t1PSQI_c7, t1PSQIg, t1PSQIgr, #t1 sleep
+         t1LS, #t1 life satisfaction
+         t2trainingload, t2medication, t2season, #t2 wave parameters
+         t2BURN, t2DEV, t2EXH, t2RSA, #t2 burnout
+         t2DS, #t2 depressive symptoms
+         t2PS, t2WURSSc, t2WURSSg, #t2 physical symptoms and URTI
+         t2PSQI_c1, t2PSQI_c2, t2PSQI_c3, t2PSQI_c4, t2PSQI_c5, t2PSQI_c6, t2PSQI_c7, t2PSQIg, t2PSQIgr,#t2 sleep
+         t2LS, #t2 life satisfaction
+         t3trainingload, t3medication, t3season, #t3 wave parameters
+         t3BURN, t3DEV, t3EXH, t3RSA, #t3 burnout
+         t3DS, #t3 depressive symptoms
+         t3PS, t3WURSSc, t3WURSSg, #t2 physical symptoms and URTI
+         t3PSQI_c1, t3PSQI_c2, t3PSQI_c3, t3PSQI_c4, t3PSQI_c5, t3PSQI_c6, t3PSQI_c7, t3PSQIg, t3PSQIgr, #t3 sleep
+         t3LS) #t3 life satisfaction
+# data from those who completed at least two waves (wave 1 + either wave 2 or 3 or both)
+half <- half2 %>% 
+  mutate(id = 1:nrow(half2)) %>%
+  select(id, bio_sex, age, sport_type, mental_disorder, pain_meds, injury, comp_years, #demographics
+         t1trainingload, t1medication, t1season, #t1 wave parameters
+         t1BURN, t1DEV, t1EXH, t1RSA, #t1 burnout
+         t1DS, #t1 depressive symptoms
+         t1PS, t1WURSSc, t1WURSSg, #t1 somatic symptoms and URTI
+         t1PSQI_c1, t1PSQI_c2, t1PSQI_c3, t1PSQI_c4, t1PSQI_c5, t1PSQI_c6, t1PSQI_c7, t1PSQIg, t1PSQIgr, #t1 sleep
+         t1LS, #t1 life satisfaction
+         t2trainingload, t2medication, t2season, #t2 wave parameters
+         t2BURN, t2DEV, t2EXH, t2RSA, #t2 burnout
+         t2DS, #t2 depressive symptoms
+         t2PS, t2WURSSc, t2WURSSg, #t2 physical symptoms and URTI
+         t2PSQI_c1, t2PSQI_c2, t2PSQI_c3, t2PSQI_c4, t2PSQI_c5, t2PSQI_c6, t2PSQI_c7, t2PSQIg, t2PSQIgr, #t2 sleep
+         t2LS, #t2 life satisfaction
+         t3trainingload, t3medication, t3season, #t3 wave parameters
+         t3BURN, t3DEV, t3EXH, t3RSA, #t3 burnout
+         t3DS, #t3 depressive symptoms
+         t3PS, t3WURSSc, t3WURSSg, #t2 physical symptoms and URTI
+         t3PSQI_c1, t3PSQI_c2, t3PSQI_c3, t3PSQI_c4, t3PSQI_c5, t3PSQI_c6, t3PSQI_c7, t3PSQIg, t3PSQIgr, #t3 sleep
+         t3LS) #t3 life satisfaction
+```
+
+# Writing out files into csv files
+```{r}
+#write.csv(twowave, "s2w1w2_anon.csv")
+#write.csv(threewave, "s2w1w2w3_anon.csv")
+#write.csv(full, "s2full.csv")
+#write.csv(half, "s2half.csv")
+```
