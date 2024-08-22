@@ -1,4 +1,4 @@
-# PhD_Study2
+# PhD Study 2
 
 This repository holds R code and data structure (and codebook for data) from my second PhD study that examined the relationship between athlete burnout and a number of health variables (depressive symptoms, sleep disruptions, life satisfaction, physical symptoms, illness symptoms) over three waves with a random-intercept cross-lagged panel model (RI-CLPM).  
 
